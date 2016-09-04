@@ -3,57 +3,59 @@
  */
 
 
-import EngineComponent from '../../base/EngineComponent';
+import AnsibleEngineComponent from '../../engines/AnsibleEngineComponent';
 
-class AnsibleEngine extends EngineComponent {
+class AnsibleEngine extends AnsibleEngineComponent {
 
     constructor(provider) {
         super();
         this.provider = provider;
     }
 
-    exportToEngine(host,tasks){
-        if (host.ssh) {
-            tasks.push({
-                name: "Ssh config PermitRoot state check",
+    exportToEngine(host, tasks) {
+        try{
+            var ssh =host.getConfig("ssh");
+        }catch(e){
+            return;
+        }
+        if (ssh) {
+            let t = {
+                name: "configs[ssh] - PermitRoot state check",
                 lineinfile: {
                     dest: '/etc/ssh/sshd_config',
-                    regexp: '^PermitRootLogin yes|^PermitRootLogin no|^#PermitRootLogin yes',
-                    line: `PermitRootLogin ${host.ssh.permitRoot}`
-                },
-                sudo: 'yes'
-            });
-            tasks.push({
-                name: "Ssh config PermitPassword state check",
+                    regexp: '^#?PermitRootLogin .*',
+                    line: `PermitRootLogin ${ssh.permitRoot=="without-password"?ssh.permitRoot : ssh.permitRoot? "yes":"no"}`
+                }
+            };
+
+            this.appendBecomes(host,ssh,t);
+            tasks.push(t);
+
+            t = {
+                name: "configs[ssh] - PermitPassword state check",
                 lineinfile: {
                     dest: '/etc/ssh/sshd_config',
-                    regexp: 'PasswordAuthentication yes|PasswordAuthentication no',
-                    line: `PasswordAuthentication ${host.ssh.passwordAuthentication}`
-                },
-                sudo: 'yes'
-            });
-            if (host.ssh.validUsersOnly) {
-                //api on refactor
-                let userAccounts = this.provider.managers.userManager.getUserAccounts(host);
-                let users = '';
-                userAccounts.forEach((user, index)=> {
-                    users += user.name;
-                    if (index < userAccounts.length - 1) {
-                        users += ",";
-                    }
-                });
-                tasks.push({
-                    name: "Ssh config ValidUsers state check",
+                    regexp: '^#?PasswordAuthentication',
+                    line: `PasswordAuthentication ${ssh.passwordAuthentication? "yes":"no"}`
+                }
+            };
+            this.appendBecomes(host,ssh,t);
+            tasks.push(t);
+
+            if (ssh.validUsersOnly) {
+                t = {
+                    name: "configs[ssh] - ValidUsers state check",
                     lineinfile: {
                         dest: '/etc/ssh/sshd_config',
-                        regexp: 'AllowUsers .*|#AllowUsers',
-                        line: `AllowUsers ${users}`
-                    },
-                    sudo: 'yes'
-                });
+                        regexp: '^#?AllowUsers .*',
+                        line: `AllowUsers ${ssh.validUsers.join(",")}`
+                    }
+                };
+                this.appendBecomes(host,ssh,t);
+                tasks.push(t);
             }
         }
     }
 }
 
-export default AnsibleEngine;
+export   default AnsibleEngine;

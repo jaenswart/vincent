@@ -1,7 +1,6 @@
 "use strict";
 
 import Host from './Host';
-import RemoteAccess from './RemoteAccess';
 import Provider from '../../Provider';
 import {logger} from '../../Logger';
 import Manager from '../base/Manager';
@@ -10,22 +9,25 @@ import ConsoleHostManager from './ui/console/HostManager';
 import mkdirp from 'mkdirp';
 import UserManager from '../user/UserManager';
 import GroupManager from '../group/GroupManager';
-
+import RemoteAccess from './RemoteAccess';
+import HistoryManager from './HistoryManager';
 
 class HostManager extends Manager {
 
     constructor(provider) {
-        if (!provider instanceof Provider) {
+        if (!(provider instanceof Provider)) {
             throw new Error("Parameter provider must be an instance of provider");
         }
         super();
         this.provider = provider;
         this.validHosts =[];
         this.errors = {manager: []};
+        this.engines = provider.loader.loadEngines('host', provider);
+        this.historyManager = new HistoryManager(provider);
     }
 
     exportToEngine(engine, host, struct) {
-        //na
+        //this.engines[engine].exportToEngine(host, struct);
     }
 
     addHost(host) {
@@ -50,13 +52,12 @@ class HostManager extends Manager {
         //accommodate Host object or hostname string
         if (typeof vhost === 'string') {
             var hostname = vhost;
-        } else if (vhost instanceof Host) {
+        } else if ((vhost instanceof Host) || (vhost.name && vhost.configGroup)) {
             hostname = vhost.name;
             configGroup = vhost.configGroup;
         } else {
             logger.logAndThrow("The host parameter must be of type Host or a host name and must be in validHosts");
         }
-
         if (configGroup){
             return this.validHosts.find((host)=>{
                 if(host.name===hostname && host.configGroup===configGroup){
@@ -64,9 +65,14 @@ class HostManager extends Manager {
                 }
             });
         } else {
-            return this.validHosts.filter((host)=> {
+            let hosts = this.validHosts.filter((host)=> {
                 return host.name === hostname;
             });
+            if(hosts.size==1){
+                return hosts[0];
+            }else {
+                return hosts;
+            }
         }
     }
 
@@ -112,9 +118,11 @@ class HostManager extends Manager {
             }
             //if (!targetHost instanceof Host) {
             //check if it is a valud host and user has access rights to host.
-            targetHost = this.findValidHost(targetHost);
-            //}
-            return this.provider.engine.export(targetHost);
+            let rtargetHost = this.findValidHost(targetHost);
+            if(!rtargetHost){
+                throw new Error(`Host ${targetHost.name? targetHost.name: targetHost} was not found in valid hosts`);
+            }
+            return this.provider.engine.export(rtargetHost);
         } else {
             throw new Error("The parameter  host to provisionHostForEngine must be of type Host or " +
                 "an HostComponent object");
@@ -122,16 +130,16 @@ class HostManager extends Manager {
     }
 
     loadHosts(hosts) {
-        //load hosts
-        hosts.forEach((hostDef) => {
-            try {
-                let host = this.loadFromJson(hostDef);
-            }
-            catch (e) {
-                logger.logAndAddToErrors(`Error loading host - ${e.message}`,
-                    this.errors.manager);
-            }
-        });
+            //load hosts
+            hosts.forEach((hostDef) => {
+                try {
+                    let host = this.loadFromJson(hostDef);
+                }
+                catch (e) {
+                    logger.logAndAddToErrors(`Error loading host - ${e.message}`,
+                        this.errors.manager);
+                }
+            });
         return this.validHosts;
     }
 
@@ -147,7 +155,8 @@ class HostManager extends Manager {
             group: hostDef.group,
             permissions: hostDef.permissions,
             remoteAccess: hostDef.remoteAccess,
-            configGroup: hostDef.configGroup
+            configGroup: hostDef.configGroup,
+            osFamily:hostDef.osFamily? hostDef.osFamily:"unknown"
         };
 
         let host = {};
@@ -198,6 +207,7 @@ class HostManager extends Manager {
     }
 
     loadConsoleUIForSession(context, session) {
+        super.loadConsoleUIForSession(context,session);
         context.hostManager = new ConsoleHostManager(session);
     }
 
@@ -219,7 +229,7 @@ class HostManager extends Manager {
 
     saveHost(host, backup = true) {
         let config = host.configGroup;
-        if (!host instanceof Host) {
+        if (!(host instanceof Host)) {
             logger.logAndThrow("Host parameter must be of type host");
         }
         //check if hosts folder exists and create if not
@@ -243,6 +253,42 @@ class HostManager extends Manager {
 
     deleteEntity(ent){
 
+    }
+
+    copyHost(srcHost,dstHost){
+        if(!(srcHost instanceof Host)){
+            throw new Error("Parameter srcHost must be an instance of Host.")
+        }
+
+        let hostname;
+        if(dstHost.name){
+            hostname= dstHost.name;
+        }
+        if(typeof dstHost=="string"){
+            hostname=dstHost;
+        }
+
+        if(hostname){
+            let json = srcHost.export();
+            json.name=hostname;
+            let newHost = this.loadFromJson(json);
+            return newHost;
+        }else{
+            throw new Error("Parameter host must have a name property or be a hostname string.");
+        }
+
+    }
+
+    addRemoteAccessToHost(host){
+        if(host instanceof Host){
+            if (!host.remoteAccess){
+                host.remoteAccess = new RemoteAccess("current_user","publicKey",false,false);
+            }else{
+                logger.warn(`Host ${host.name} already has a remote access property defined.`);
+            }
+        }else{
+            logger.logAndThrow("Parameter host must be an instance of Host.");
+        }
     }
 
 }

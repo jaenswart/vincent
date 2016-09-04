@@ -5,15 +5,21 @@
 import HostEntity from '../../Host';
 import Vincent from '../../../../Vincent';
 import PermissionsUIManager from '../../../../ui/PermissionsUIManager';
-import UserAccount from  '../../../user/ui/console/UserAccount';
+import Session from '../../../../ui/Session';
+import RemoteAccess from './RemoteAccess';
+import History from './History';
 import {logger} from '../../../../Logger';
-import RemoteAccess from '../../RemoteAccess';
 
 var data = new WeakMap();
 
 class Host extends PermissionsUIManager {
 
-    constructor(host, session, configGroup) {
+    constructor(host, session, configGroup, osFamily) {
+
+        if (!(session instanceof Session)) {
+            throw new Error("Parameter session must be an instance of Session.");
+        }
+
         if (!(host instanceof HostEntity) && typeof host !== "string") {
             throw new Error("The host parameter must be a host name, or a ui/Host instance.");
         }
@@ -22,105 +28,60 @@ class Host extends PermissionsUIManager {
             configGroup = "default";
         }
 
+        if (!osFamily) {
+            osFamily = "unknown";
+        }
+
         //if parameter is of type HostElement (real Host) then we assume it is already
         //added to valid host and this is a reconstruction.
 
         if (typeof host === 'string') {
             host = new HostEntity(Vincent.app.provider, host, session.appUser.name,
-                session.appUser.primaryGroup, 760, configGroup);
+                session.appUser.primaryGroup, 760, configGroup, osFamily);
             Vincent.app.provider.managers.hostManager.addHost(host);
         }
-        super(session.appUser, host);
+        super(session, host);
         var obj = {};
         obj.permObj = host;
         obj.appUser = session.appUser;
         obj.session = session;
+        obj.configs = new Map();
         data.set(this, obj);
-        this.lastResults = "NA";
-        this.info="Not Available";
+        this.lastResult = "NA";
+        this.info = "Not Available";
     }
 
-    get remoteUser() {
+    getHistory() {
         return this._readAttributeWrapper(()=> {
-            let ra = data.get(this).permObj.remoteAccess;
-            if (!ra) {
-                return "currentUser";
+            if (data.get(this).history) {
+                let hist = new History(data.get(this).history, data.get(this).session, data.get(this).permObj);
+                return hist;
             } else {
-                return data.get(this).permObj.remoteAccess.remoteUser;
-            }
-        });
-    }
-
-    set remoteUser(remoteUser) {
-        this._writeAttributeWrapper(()=> {
-            let ra = data.get(this).permObj.remoteAccess;
-            if (!ra) {
-                data.get(this).permObj.remoteAccess = new RemoteAccess(remoteUser);
-            } else {
-                data.get(this).permObj.remoteAccess.remoteUser = remoteUser;
-            }
-        });
-    }
-
-    get remoteAuth() {
-        return this._readAttributeWrapper(()=> {
-            let ra = data.get(this).permObj.remoteAccess;
-            if (!ra) {
-                return "publicKey";
-            } else {
-                return data.get(this).permObj.remoteAccess.authentication;
-            }
-        });
-    }
-
-    set remoteAuth(remoteAuth) {
-        this._writeAttributeWrapper(()=> {
-            let ra = data.get(this).permObj.remoteAccess;
-            try {
-                if (!ra) {
-                    data.get(this).permObj.remoteAccess = new RemoteAccess("currentUser", remoteAuth);
-                } else {
-                    data.get(this).permObj.remoteAccess.authentication = remoteAuth;
+                let hist;
+                try {
+                    hist = Vincent.app.provider.managers.hostManager.historyManager.loadFromFile(data.get(this).permObj);
+                } catch (e) {
+                    hist = Vincent.app.provider.managers.hostManager.historyManager.createHistory(data.get(this).permObj);
                 }
-            } catch (e) {
-                data.get(this).session.socket.write(e.message ? e.message : e);
+                data.get(this).history = hist;
+                return new History(hist, data.get(this).session, data.get(this).permObj);
             }
         });
     }
 
-    get becomeUser() {
-        return this._readAttributeWrapper(()=> {
-            let ra = data.get(this).permObj.remoteAccess;
-            if (!ra) {
-                return false;
-            } else {
-                return data.get(this).permObj.remoteAccess.becomeUser;
-            }
-        });
+    get remoteAccess() {
+        if (data.get(this).permObj.remoteAccess == undefined) {
+            Vincent.app.provider.managers.hostManager.addRemoteAccessToHost(data.get(this).permObj);
+        }
+        return new RemoteAccess(data.get(this).permObj.remoteAccess);
     }
 
-    set becomeUser(becomeUser) {
-        this._writeAttributeWrapper(()=> {
-            let ra = data.get(this).permObj.remoteAccess;
-            try {
-                if (!ra) {
-                    data.get(this).permObj.remoteAccess = new RemoteAccess("currentUser", "publicKey", becomeUser);
-                } else {
-                    data.get(this).permObj.remoteAccess.becomeUser = becomeUser;
-                }
-            } catch (e) {
-                return e.message ? e.message : e;
-            }
-        });
-    }
-
-    getInfo() {
+    getInfo(func) {
         let remoteUsername;
         let privateKeyPath;
         let password;
         let sudoPassword;
         let authType;
-
         let checkHostKey = Vincent.app.provider.config.get("checkhostkey");
         if (!checkHostKey) {
             checkHostKey = true;
@@ -129,10 +90,12 @@ class Host extends PermissionsUIManager {
         }
 
         let host = data.get(this).permObj;
+        let cli = data.get(this).session.console;
+
         //username, checkhostkey, privkeyPath, passwd, sudoPasswd
         return Vincent.app.provider._executeAttributeCheck(data.get(this).appUser, host, ()=> {
             try {
-                let out = data.get(this).session.socket;
+                let out = data.get(this).session.console;
                 //If remote access is not defined on the host then use public key
                 if (!host.remoteAccess || !host.remoteAccess.authentication || host.remoteAccess.authentication == "publicKey") {
                     privateKeyPath = data.get(this).appUser.privateKeyPath;
@@ -144,8 +107,9 @@ class Host extends PermissionsUIManager {
                         password = data.get(this).session.passwords["default"];
                     }
                     if (!password) {
-                        return `Host ${host.name} uses password authentication but no password has been set.`
-                            + `Please set your password with ".password ${host.name}".`;
+                        cli.outputError(`Host ${host.name} uses password authentication but no password has been set.\n`
+                            + `Please set your password with ".password ${host.name}.`);
+                        return;
                     }
                 }
 
@@ -163,21 +127,32 @@ class Host extends PermissionsUIManager {
                     }
                 }
 
-               Vincent.app.provider.engine.getInfo(host, checkHostKey, privateKeyPath,
-                    remoteUsername, password, sudoPassword).then((result)=> {
-                    this.info = result;
-                    out.write(JSON.stringify(this.info));
-                },(err)=>{
-                    out.write(`Error during host information retrieval - ${err}`)
+                if (!func) {
+                    func = (result)=> {
+                        this.info = result;
+                        cli.outputSuccess(`Host ${host.name} query returned. Status available in info property.`);
+                    };
+                }
+                Vincent.app.provider.engine.getInfo(host, checkHostKey, privateKeyPath,
+                    remoteUsername, password, sudoPassword).then(func, (err)=> {
+                    cli.outputError(`Error during host information retrieval - ${err}`);
                 }).catch((e)=> {
-                    out.write(`There was an error getting info for ${data.get(this).permObj.name} - ${e.message ? e.message : e}`);
+                    cli.outputError(`There was an error getting info for ${data.get(this).permObj.name} - ${e.message ? e.message : e}`);
                 });
                 return `${host.name} info query has been submitted. Results will be available shortly.`;
             } catch (e) {
-                return `There was an error configuring execution of info query ${data.get(this).permObj.name} - ${e.message ? e.message : e}`;
+                cli.outputError(`There was an error configuring execution of info query ${data.get(this).permObj.name} - ${e.message ? e.message : e}`);
             }
         });
 
+    }
+
+    copyTo(dstHost){
+        try {
+            return new Host(Vincent.app.provider.managers.hostManager.copyHost(data.get(this).permObj, dstHost),data.get(this).session);
+        }catch(e){
+            data.get(this).session.console.outputError(e);
+        }
     }
 
     get name() {
@@ -240,6 +215,18 @@ class Host extends PermissionsUIManager {
         });
     }
 
+    get osFamily() {
+        return this._readAttributeWrapper(()=> {
+            return data.get(this).permObj.osFamily;
+        });
+    }
+
+    set osFamily(os) {
+        this._writeAttributeWrapper(()=> {
+            data.get(this).permObj.osFamily = os;
+        });
+    }
+
     inspect() {
         try {
             return Vincent.app.provider._readAttributeCheck(data.get(this).appUser, data.get(this).permObj, ()=> {
@@ -249,10 +236,11 @@ class Host extends PermissionsUIManager {
                     owner: data.get(this).permObj.owner,
                     group: data.get(this).permObj.group,
                     permissions: data.get(this).permObj.permissions.toString(8),
+                    osFamily: data.get(this).permObj.osFamily,
                 };
             });
         } catch (e) {
-            return `Permission denied - ${e.message ? e.message : e}`;
+            data.get(this).session.console.outputError(`Permission denied - ${e.message ? e.message : e}`);
         }
     }
 
@@ -265,22 +253,26 @@ class Host extends PermissionsUIManager {
     save() {
         return Vincent.app.provider._executeAttributeCheck(data.get(this).appUser, data.get(this).permObj, ()=> {
             let result = Vincent.app.provider.managers.hostManager.saveHost(data.get(this).permObj);
+            if (data.get(this).history) {
+                this.getHistory().save();
+            }
             return result;
         });
     }
 
     generateDeploymentArtifact() {
-        return Vincent.app.provider._executeAttributeCheck(data.get(this).appUser, data.get(this).permObj, ()=> {
+        data.get(this).session.console.outputSuccess("Generating configuration files for engine. Please wait...");
+        Vincent.app.provider._executeAttributeCheck(data.get(this).appUser, data.get(this).permObj, ()=> {
             try {
                 return Vincent.app.provider.engine.export(data.get(this).permObj).then((result)=> {
                     if (result == "success") {
-                        return `Successfully generated playbook for ${data.get(this).permObj.name}.`;
+                        data.get(this).session.console.outputSuccess(`Successfully generated playbook for ${data.get(this).permObj.name}.`);
                     } else {
-                        return (`Failed to generate playbook for ${data.get(this).permObj.name}.`);
+                        data.get(this).session.console.outputWarning(`Failed to generate playbook for ${data.get(this).permObj.name}.`);
                     }
                 });
             } catch (e) {
-                return `There was an error generating playbook for ${data.get(this).permObj.name} - ${e.message ? e.message : e}`;
+                data.get(this).session.console.outputError(`There was an error generating playbook for ${data.get(this).permObj.name} - ${e.message ? e.message : e}`);
             }
         });
     }
@@ -302,10 +294,10 @@ class Host extends PermissionsUIManager {
         }
 
         let host = data.get(this).permObj;
+        let cli = data.get(this).session.console;
         //username, checkhostkey, privkeyPath, passwd, sudoPasswd
         return Vincent.app.provider._executeAttributeCheck(data.get(this).appUser, host, ()=> {
             try {
-                let out = data.get(this).session.socket;
                 //If remote access is not defined on the host then use public key
                 if (!host.remoteAccess || !host.remoteAccess.authentication || host.remoteAccess.authentication == "publicKey") {
                     privateKeyPath = data.get(this).appUser.privateKeyPath;
@@ -317,8 +309,9 @@ class Host extends PermissionsUIManager {
                         password = data.get(this).session.passwords["default"];
                     }
                     if (!password) {
-                        return `Host ${host.name} uses password authentication but no password has been set.`
-                            + `Please set your password with ".password ${host.name}".`;
+                        cli.outputError(`Host ${host.name} uses password authentication but no password has been set.\n`
+                            + `Please set your password with ".password ${host.name}.`);
+                        return;
                     }
                 }
 
@@ -334,34 +327,92 @@ class Host extends PermissionsUIManager {
                     if (!sudoPassword) {
                         sudoPassword = data.get(this).session.passwords["default"];
                     }
+                    if (!sudoPassword) {
+                        cli.outputError(`Host ${host.name} requires a sudo password but no password has been set.\n`
+                            + `Please set your password with ".password ${host.name}.`);
+                        return;
+                    }
                 }
 
                 //try running playbook
                 Vincent.app.provider.engine.runPlaybook(host, checkHostKey, privateKeyPath,
                     remoteUsername, password, sudoPassword).then((results)=> {
-                    this.lastResults = results.toString();
-                    out.write(this.lastResults);
-                    //out.write(`Results for ${data.get(this).permObj.name}.\n\r - ${JSON.stringify(results)}`);
+                    let ts = Date.now();
+                    if (!data.get(this).history) {
+                        this.getHistory();
+                    }
+                    data.get(this).history.addEntry(ts, results);
+                    this.lastResult = data.get(this).history.getEntry(ts);
+                    if (this.lastResult.status == "failed") {
+                        cli.outputError(`${this.lastResult.entry.stats[host.name].failures} tasks failed for for ${data.get(this).permObj.name}. Please view history for details.`);
+                        return;
+                    }
+                    cli.outputSuccess(`Configuration for ${data.get(this).permObj.name} successfully deployed. Please view history for details.`);
                 }).catch((e)=> {
-                    out.write(`There was an error running playbook for ${data.get(this).permObj.name} - ${e.message ? e.message : e}`);
+                    cli.outputError(`There was an error running playbook for ${data.get(this).permObj.name} ` +
+                        `- ${e.message ? e.message : e}`);
                 });
                 return `${host.name} playbook has been submitted. Results will be available shortly.`;
             } catch (e) {
-                return `There was an error setting up playbook execution for ${data.get(this).permObj.name} - ${e.message ? e.message : e}`;
+                cli.outputError(`There was an error setting up playbook execution for ${data.get(this).permObj.name} - ${e.message ? e.message : e}`);
             }
         });
     }
 
-    _readAttributeWrapper(func) {
-        try {
-            return Vincent.app.provider._readAttributeCheck(data.get(this).appUser, data.get(this).permObj, func);
-        } catch (e) {
-            return e.message;
-        }
+    get listConfigs() {
+        return Object.keys(data.get(this).permObj.configs.container);
     }
 
-    _writeAttributeWrapper(func) {
-        return Vincent.app.provider._writeAttributeCheck(data.get(this).appUser, data.get(this).permObj, func);
+    getConfig(key) {
+        return Vincent.app.provider._readAttributeCheck(data.get(this).appUser, data.get(this).permObj, ()=> {
+            let obj = data.get(this).permObj.getConfig(key);
+            let entries = Vincent.app.converters.entries();
+            let converter;
+            var entry = entries.next();
+            while (!entry.done) {
+                if (entry.value[0] === key) {
+                    converter = entry.value[1];
+                    break;
+                }
+                entry = entries.next();
+            }
+            if (!converter) {
+                data.get(this).session.console.outputError(`No converter for config ${key} was found.`);
+                return;
+            }
+            return new converter(obj, data.get(this).permObj, data.get(this).session);
+        });
+    }
+
+    addConfig(key) {
+        let manager = Vincent.app.configs.get(key);
+        if (manager) {
+            manager.addConfigToHost(data.get(this).permObj);
+        }
+        return this.getConfig(key);
+    }
+
+    getTaskObjects() {
+        let taskObjects = [];
+        taskObjects =taskObjects.concat(this.userAccounts);
+        taskObjects = taskObjects.concat(this.hostGroups);
+        Object.keys(data.get(this).permObj.configs.container).forEach((key)=> {
+            try {
+                taskObjects.push(this.getConfig(key));
+            } catch (e) {
+                logger.error(e);
+            }
+        });
+        return taskObjects;
+    }
+
+    deleteConfig(key) {
+        try {
+            data.get(this).permObj.removeConfig(key);
+            data.get(this).session.console.outputSuccess(`Configuration for ${key} has been removed from host ${this.name}.`);
+        } catch (e) {
+            data.get(this).session.console.outputError(e.message);
+        }
     }
 
 }

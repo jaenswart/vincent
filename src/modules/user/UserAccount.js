@@ -12,8 +12,8 @@ import AuthorizedUser from './AuthorizedUser';
 class UserAccount extends HostComponent {
     
     constructor(provider, data) {
-        super(provider);
-        this.data = {authorized_keys: []};
+        super(provider,data);
+        this.data.authorized_keys= [];
 
         this.errors = [];
         if (data) {
@@ -62,7 +62,6 @@ class UserAccount extends HostComponent {
                         }
                     });
                 }
-                super.load(data);
             } else {
                 logger.logAndThrow("The data parameter for UserAccount must be an data object.");
             }
@@ -98,7 +97,7 @@ class UserAccount extends HostComponent {
             let euser = this.data.authorized_keys.find((key)=> {
                 if (key.name == user.name) {
                     key.state = state; //update state
-                    return key.user;
+                    return key;
                 }
             });
             if (!euser) {
@@ -122,7 +121,7 @@ class UserAccount extends HostComponent {
     }
 
     changeAuthorizedUserState(user,state){
-        if(!user instanceof User){
+        if(!(user instanceof User)){
             logger.logAndThrow("Parameter user must be an instance of User.");
         }
         if(state!=="present" && state!=="absent"){

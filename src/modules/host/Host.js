@@ -10,10 +10,9 @@ import _ from 'lodash';
 import HostComponent from './../base/HostComponent';
 import HostComponentContainer from '../base/HostComponentContainer';
 
-class Host extends Base {
+class Host  {
 
-    constructor(provider, data, owner, group, permissions, configGroup) {
-        super();
+    constructor(provider, dataOrName, owner, group, permissions, configGroup,osFamily) {
         this.errors = [];
         this.deleted={};
         if (!provider || !(provider instanceof Provider)) {
@@ -22,46 +21,43 @@ class Host extends Base {
         this.provider = provider;
         this.data={};
         //check if we were provided with a host name or a data object
-        if (typeof data === 'string') {
-            this.name = data;
+        if (typeof dataOrName === 'string') {
+            this.name = dataOrName;
             //if(!owner  || !group){
             //    logger.logAndThrow(`${data} requires a valid owner and group.`);
             //}
             this.owner = owner;
             this.group = group;
             this.permissions = permissions ? permissions : "660";
+            this.osFamily=osFamily? osFamily: "unknown";
             //avoid init fields problem for detecting changes in name/configGroup
             this.data.configGroup = configGroup ? configGroup : "default";
-        } else if (typeof data === 'object') {
-            if (!data.name) {
-                logger.logAndThrow(`The parameter data must be a hostname or an object with a mandatory property \"name\".`);
+        } else if (typeof dataOrName === 'object') {
+            if (!dataOrName.name) {
+                logger.logAndThrow(`The parameter data must be a hostname or an object with a mandatory property "name".`);
             }
-            this.name=data.name;
-            // this.data = {
-            //     name: data.name
-            // };
-            //if(!data.owner  || !data.group){
-            //    logger.logAndThrow(`${data.name} requires a valid owner and group.`);
-            //}
-            this.owner = data.owner;
-            this.group = data.group;
-            this.permissions = data.permissions ? data.permissions : "660";
+            this.name=dataOrName.name;
+            this.owner = dataOrName.owner;
+            this.group = dataOrName.group;
+            this.permissions = dataOrName.permissions ? dataOrName.permissions : "660";
+            this.osFamily=dataOrName.osFamily? dataOrName.osFamily: "unknown";
             //avoid init fields problem for detecting changes in name/configGroup
-            this.data.configGroup = data.configGroup ? data.configGroup : "default";
+            this.data.configGroup = dataOrName.configGroup ? dataOrName.configGroup : "default";
         }
 
         //configure remoteAccess settings for host.
-        if (data.remoteAccess) {
+        if (dataOrName.remoteAccess) {
             try {
-                let remoteAccessDef = data.remoteAccess;
+                let remoteAccessDef = dataOrName.remoteAccess;
                 let remoteAccess = new RemoteAccess(remoteAccessDef.remoteUser,
-                    remoteAccessDef.authentication, remoteAccessDef.becomeUser);
+                    remoteAccessDef.authentication, remoteAccessDef.becomeUser,remoteAccessDef.sudoAuthentication);
                 this.data.remoteAccess = remoteAccess;
             } catch (e) {
                 logger.logAndAddToErrors(`Error adding remote access user - ${e.message}`,
                     this.errors);
             }
         }
+        this.data.configs = new HostComponentContainer("configs");
     }
 
     set name(name) {
@@ -88,6 +84,10 @@ class Host extends Base {
 
     get permissions() {
         return this.data.permissions;
+    }
+
+    get osFamily(){
+        return this.data.osFamily;
     }
 
     //todo check if this is a valid user?
@@ -118,8 +118,16 @@ class Host extends Base {
         this.data.permissions = dperms;
     }
 
+    set osFamily(osFamily){
+            this.data.osFamily=osFamily;
+    }
+
     get configGroup() {
         return this.data.configGroup;
+    }
+
+    get configs(){
+        return this.data.configs;
     }
 
     set configGroup(configGroup) {
@@ -150,12 +158,36 @@ class Host extends Base {
         if (!remoteAccess) {
             this.data.remoteAccess = null;
         }
-        if (!remoteAccess instanceof RemoteAccess) {
+        if (!(remoteAccess instanceof RemoteAccess)) {
             throw new Error("The parameter remoteAccessObj must be of type RemoteAccess");
         }
         this.data.remoteAccess = remoteAccess;
     }
 
+    getConfig(key){
+        let obj = this.configs.container[key];
+        if(!obj){
+            logger.logAndThrow(`No config for ${key} was found.`);
+         }
+        return obj;
+    }
+
+    addConfig(key,config){
+        if (!this.data.configs) {
+            this.data.configs = new HostComponentContainer("configs");
+        }
+        this.configs.add(key,config);
+    }
+
+    deleteConfig(key){
+        let obj = this.configs.container[key];
+        if(!obj){
+            logger.logAndThrow(`No config for ${key} was found.`);
+        }
+        //todo call all entity delte methods
+        delete this.configs.container[key];
+    }
+    
     export() {
         let keys = Object.keys(this.data);
         let obj = {};
@@ -164,7 +196,7 @@ class Host extends Base {
                 obj[prop] = parseInt(this.data.permissions.toString(8));
                 return;
             }
-            if(prop=="deleted"){
+            if(prop=="deleted" || (prop=="configs" && Object.keys(this.data[prop].container).length==0)){
                 return;
             }
             if (Array.isArray(this.data[prop]) && this.data[prop].length > 0 && this.data[prop][0] instanceof HostComponent) {
@@ -181,7 +213,7 @@ class Host extends Base {
                     if (Array.isArray(this.data[prop].container[tKey])) {
                         obj[prop][tKey] = [];
                         this.data[prop].container[tKey].forEach((each)=> {
-                            obj[prop][tKey].push(each.data.export());
+                            obj[prop][tKey].push(each.export());
                         });
                     } else {
                         obj[prop][tKey] = this.data[prop].container[tKey].export();

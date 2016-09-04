@@ -6,6 +6,7 @@ import Provider from '../../../../Provider';
 import Vincent from '../../../../Vincent';
 import {logger} from '../../../../Logger';
 import HostEntity from '../../Host';
+import Session from '../../../../ui/Session';
 
 var data = new WeakMap();
 
@@ -13,12 +14,16 @@ var data = new WeakMap();
 class HostManager {
 
     constructor(session) {
+        if(!(session instanceof Session)){
+            throw new Error("Parameter sessions must be an instance of Session.");
+        }
         let obj = {};
         obj.appUser = session.appUser;
         obj.session = session;
         obj.permObj = Vincent.app.provider.managers.hostManager;
         data.set(this, obj);
     }
+
 
     get hosts() {
         try {
@@ -38,17 +43,17 @@ class HostManager {
             });
             return hosts;
         } catch (e) {
-            console.log(e.message);
-            return false;
+            data.get(this).session.console.outputError(e.message);
         }
     }
 
-    addHost(hostname, configGroup = "default") {
+    addHost(hostname, osFamily="Unknown",configGroup = "default") {
         if (typeof hostname === 'string' && typeof configGroup === 'string') {
             var host = new Host(hostname, data.get(this).session, configGroup);
             return host;
         } else {
-             return "Parameter hostname must be a hostname string and the optional parameter configGroup must be a configuration group string.";
+            data.get(this).session.console.outputError("Parameter hostname must be a hostname string " +
+                "and the optional parameter configGroup must be a configuration group string.");
         }
     }
 
@@ -57,7 +62,6 @@ class HostManager {
     }
 
     getHost(hostname, configGroup) {
-        console.log(configGroup);
         if (typeof hostname !== "string") {
             return "Parameter hostname must be of type string.";
         }
@@ -68,27 +72,33 @@ class HostManager {
         }
         try {
             let hosts = data.get(this).permObj.findValidHost(hostname, configGroup);
-            if (Array.isArray(hosts)) {
-                let tmap = new Map();
-                hosts.forEach((host)=> {
-                    let h = Vincent.app.provider._readAttributeCheck(data.get(this).appUser, host, () => {
-                        return new Host(host, data.get(this).session,configGroup);
+            if (hosts) {
+                if (Array.isArray(hosts)) {
+                    let tmap = new Map();
+                    hosts.forEach((host)=> {
+                        let h = Vincent.app.provider._readAttributeCheck(data.get(this).appUser, host, () => {
+                            return new Host(host, data.get(this).session, configGroup);
+                        });
+                        tmap.set(h.configGroup, h);
                     });
-                    tmap.set(h.configGroup, h);
-                });
-                return tmap;
-            } else {
-                return Vincent.app.provider._readAttributeCheck(data.get(this).appUser, hosts,()=>{
-                    return new Host(hosts, data.get(this).session);
-                });
+                    return tmap;
+                } else {
+                    return Vincent.app.provider._readAttributeCheck(data.get(this).appUser, hosts, ()=> {
+                        return new Host(hosts, data.get(this).session);
+                    });
+                }
+            }else{
+                let msg = `Host ${hostname} was not found in valid hosts.`;
+                logger.error(msg);
+                data.get(this).session.console.outputError(msg);
             }
-        } catch (e) {
-            return false;
+        }catch (e) {
+            logger.error(e);
+            data.get(this).session.console.outputError(e.message? e.message: e);
         }
     }
 
     saveHosts() {
-        console.log("saving hosts");
         let counter = 0;
         data.get(this).permObj.validHosts.forEach((host)=> {
             let result = this.saveHost(host);

@@ -4,16 +4,14 @@
 
 
 import {logger} from './../../Logger';
-import Base from './../base/Base';
+import base from './../base/Base';
 import User from './../user/User';
 
-class RemoteAccess extends Base {
+class RemoteAccess  {
 
-    constructor(remoteUser, authentication, becomeUser) {
-        super();
+    constructor(remoteUser, authentication, becomeUser,sudoAuthentication) {
         this.errors = [];
         this.data = {};
-
         try {
             this.remoteUser = remoteUser;
         } catch (e) {
@@ -32,10 +30,24 @@ class RemoteAccess extends Base {
             this.errors.push(e);
         }
 
+        try{
+            this.sudoAuthentication=sudoAuthentication;
+        }catch(e){
+            this.errors.push(e);
+        }
+
         if (this.errors.length > 0) {
             let str = `Invalid configuration settings provided for RemoteAccess object./n/r${this.errors.join("/n/r")}`;
             throw new Error(str);
         }
+    }
+
+    get sudoAuthentication() {
+        return this.data.sudoAuthentication? this.data.sudoAuthentication: false;
+    }
+
+    set sudoAuthentication(enable) {
+        this.data.sudoAuthentication=base.getBooleanValue(enable);
     }
 
     get remoteUser() {
@@ -99,6 +111,9 @@ class RemoteAccess extends Base {
         }
         if(this.data.authentication){
             obj.authentication = this.data.authentication;
+        }
+        if(this.data.sudoAuthentication){
+            obj.sudoAuthentication = this.data.sudoAuthentication;
         }
         if (Object.keys(obj).length > 0){
             return obj

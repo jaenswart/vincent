@@ -4,22 +4,50 @@
 
 import HostComponent from './../base/HostComponent';
 import Ssh from './Ssh';
-
+import {logger} from '../../Logger';
+import Host from '../host/Host';
+import User from '../user/User';
 class HostSsh extends HostComponent {
 
-    constructor(provider,config) {
-        super(provider);
-        this.data=new Ssh(config);
-        super.load(config);
+    constructor(provider, config) {
+        super(provider,config);
+        this.data.obj = new Ssh(config);
+        this._validUsers = [];
         this.errors = this.data.errors;
     }
 
-    get ssh(){
-        return this.data.data;
+    get permitRoot() {
+        return this.data.obj.permitRoot;
     }
 
-    export(){
-        let  obj = this.data.export();
+    set permitRoot(root) {
+        this.data.obj.permitRoot = root;
+    }
+
+    get validUsersOnly() {
+        return this.data.obj.validUsersOnly;
+    }
+
+    set validUsersOnly(permit) {
+        this.data.obj.validUsersOnly = permit;
+    }
+
+    get passwordAuthentication() {
+        return this.data.obj.passwordAuthentication;
+    }
+
+    set passwordAuthentication(permit) {
+        this.data.obj.passwordAuthentication = permit;
+    }
+    
+    get validUsers(){
+        return this._validUsers;
+    }
+
+
+    export() {
+        let obj = this.data.obj.export();
+        if (this.validUsers.length > 0) obj.validUsers = this.validUsers;
         super.export(obj);
         return obj;
     }

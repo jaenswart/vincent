@@ -2,10 +2,11 @@
  * Created by mark on 3/28/16.
  */
 
+import {logger} from "../../Logger";
+import Session from '../../ui/Session';
 
-class Manager {
-    
-   
+class Manager  {
+
     loadHost(host, hosts, hostDef){
         throw new Error ("Method loadHost must be overridden in child object");
     }
@@ -21,19 +22,16 @@ class Manager {
         throw new Error ("Method exportToEngine must be overridden in child object");
     }
     
-    loadEngines(dir){
-        throw new Error ("Method loadEngines must be overridden in child object");
-    }
-    
     clear(){
         throw new Error ("Method clear must be overridden in child object");
     }
 
     loadConsoleUIForSession(context,session){
-        throw new Error ("Method loadConsoleUI must be overridden in child object");
+        if(!(session instanceof Session)){
+            logger.logAndThrow("Parameter session must be an instance of Session.");
+        }
     }
 
-   
     loadWebUI(){
         throw new Error ("Method loadWebUI must be overridden in child object");
     }
@@ -50,6 +48,7 @@ class Manager {
     entityStateChange(hc){
         throw new Error ("Method getDependencies must be overridden in child object");  
     }
+
 }
 
 export default Manager;

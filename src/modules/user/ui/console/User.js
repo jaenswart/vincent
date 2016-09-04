@@ -4,11 +4,10 @@
 
 import Vincent from '../../../../Vincent';
 import UserElement from '../../User';
-import UserManager from './UserManager';
-import {logger} from '../../../../Logger';
 import AppUser from '../../../../ui/AppUser';
 import PermissionHelper from '../../../../ui/base/PermissionHelper';
-
+import UserManager from '../../UserManager';
+import path from 'path';
 
 var data = new WeakMap();
 
@@ -19,9 +18,11 @@ class User extends PermissionHelper {
      when converting internal data type to UI User type. The data structure is of the following format:
      { name: <username>,uid:<int>, state:<present|absent> }
      */
-    constructor(user, appUser, manager) {
-        let obj ={};
-        if (user && (typeof user === 'string' || ((user.name!=undefined) && !(user instanceof UserElement)))) {
+    constructor(user, session) {
+
+        let manager = Vincent.app.provider.managers.userManager;
+        let obj = {};
+        if (user && (typeof user === 'string' || ((user.name != undefined) && !(user instanceof UserElement)))) {
             obj.user = new UserElement(user);
             Vincent.app.provider.managers.userManager.addValidUser(obj.user);
         } else if (user instanceof UserElement) {
@@ -29,16 +30,23 @@ class User extends PermissionHelper {
         } else {
             throw new Error("The parameter user must be a user name or data object with a name and optional uid, state key.");
         }
-        if (!appUser instanceof AppUser) {
+        if (!(session.appUser instanceof AppUser)) {
             throw new Error("The parameter appUser must be of type AppUser.");
         }
-        obj.appUser = appUser;
-        if (!manager instanceof UserManager) {
+        obj.appUser = session.appUser;
+        if (!(manager instanceof UserManager)) {
             throw new Error("The parameter manager must be of type UserManager.");
         }
+        //set the public key path
+        let dir = path.resolve(Vincent.app.provider.getDBDir(),
+            Vincent.app.provider.config.get("keydir"), obj.user.name);
+        let kpath = path.resolve(dir,obj.user.name + "_vincent.pub");
+        obj.user.data.key=kpath;
+
         obj.permObj = manager;
-        super(obj.appUser,obj.permObj);
-        data.set(this,obj);
+        obj.session = session;
+        super(obj.session, obj.permObj);
+        data.set(this, obj);
     }
 
     get name() {
@@ -47,12 +55,12 @@ class User extends PermissionHelper {
         });
     }
 
-/*    set name(name) {
-        return this._writeAttributeWrapper(()=> {
-            data.get(this).user.name = name;
-        });
-    }
-*/
+    /*    set name(name) {
+     return this._writeAttributeWrapper(()=> {
+     data.get(this).user.name = name;
+     });
+     }
+     */
     get uid() {
         return this._readAttributeWrapper(()=> {
             return data.get(this).user.uid;
@@ -78,38 +86,33 @@ class User extends PermissionHelper {
         });
     }
 
-    get publicKey(){
+    get publicKey() {
         return this._readAttributeWrapper(()=> {
-            return data.get(this).user.key;
+            try{
+                return data.get(this).user.key;
+            }catch(e){
+                data.get(this).session.console.outputError(`A public key has not been defined for user ${this.name}.`);
+                return;
+            }
         });
     }
 
-    set publicKey(key){
+    set publicKey(key) {
         return this._writeAttributeWrapper(()=> {
-            data.get(this).user.setKey(Vincent.app.provider,key);
-        });
-    }
-    
-    toString() {
-        return this._readAttributeWrapper(()=> {
-            return `{ name: ${this.name},uid:${this.uid ? this.uid : '-'},state:${this.state} }`;
+            data.get(this).user.setKey(Vincent.app.provider, key);
         });
     }
 
     inspect() {
         try {
-            return this._readAttributeWrapper(()=> {
-                return {
-                    name: this.name,
-                    uid: this.uid ? this.uid : "-",
-                    state: this.state,
-                    publicKey: this.publicKey? "yes":"no"
-                };
-            });
-        }catch(e) {
             return {
-                msg:"Permission denied"
-            }
+                name: this.name,
+                uid: this.uid ? this.uid : "-",
+                state: this.state,
+                publicKey: this.publicKey ? "yes" : "no"
+            };
+        } catch (e) {
+            data.get(this).session.console.outputError(e);
         }
     }
 

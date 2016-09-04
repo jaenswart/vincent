@@ -118,6 +118,7 @@ describe("validating host configuration with sudoer entry config", function () {
                 group: "sysadmin",
                 permissions: 770,
                 configGroup:"default",
+                osFamily:"unknown",
                 users: [
                     {
                         user: {name: "user1", state: "present"}
@@ -175,7 +176,7 @@ describe("validating host configuration with sudoer entry config", function () {
 
     it('should produce the correct line for insertion into sudoer file', function () {
         let host = provider.managers.hostManager.findValidHost("www.example.co.za","default");
-        expect(provider.managers.sudoManager.getHostSudoerEntries(host)[0].data.entry).to.deep.equal('user1,%group1 ALL = (ALL:ALL) NOPASSWD: /bin/vi');
+        expect(provider.managers.sudoManager.getHostSudoerEntries(host)[0].data.entry.line).to.deep.equal('user1,%group1 ALL = (ALL:ALL) NOPASSWD: /bin/vi');
     });
 
 });
@@ -287,6 +288,7 @@ describe("validating host configuration with sudo entry and invalid users", func
                 name: "www.example.com",
                 owner: "einstein",
                 group: "sysadmin",
+                osFamily:"unknown",
                 permissions: 770,
                 configGroup:"default",
                 users: [
@@ -543,6 +545,7 @@ describe("validating host configuration with sudo entry include", function () {
         var validHosts = [
             {
                 name: "www.example.com",
+                osFamily: "unknown",
                 owner: "einstein",
                 group: "sysadmin",
                 permissions: 770,

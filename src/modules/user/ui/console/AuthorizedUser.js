@@ -19,12 +19,13 @@ class AuthorizedUser extends PermissionHelper {
      when converting internal data type to UI User type. The data structure is of the following format:
      { name: <username>,uid:<int>, state:<present|absent> }
      */
-    constructor(authorizedUser, appUser,host) {
+    constructor(authorizedUser, session,host) {
         let obj ={};
-        obj.appUser=appUser;
+        obj.appUser=session.appUser;
         obj.permObj=host;
+        obj.session = session;
         obj.authorizedUser=authorizedUser;
-        super(obj.appUser,obj.permObj);
+        super(obj.session,obj.permObj);
         data.set(this,obj);
     }
 
@@ -67,27 +68,10 @@ class AuthorizedUser extends PermissionHelper {
                 };
             });
         }catch(e) {
-            return "Permission denied";
+            data.get(this).session.console.outputError(`Permission denied - ${e.message ? e.message : e}`);
         }
     }
 
-    _readAttributeWrapper(func) {
-        try {
-            return Vincent.app.provider._readAttributeCheck(data.get(this).appUser, data.get(this).permObj, func);
-        } catch (e) {
-            //console.log(e);
-            return false;
-        }
-    }
-
-    _writeAttributeWrapper(func) {
-        try {
-            return Vincent.app.provider._writeAttributeCheck(data.get(this).appUser,data.get(this).permObj, func);
-        } catch (e) {
-            //console.log(e);
-            return false;
-        }
-    }
 
 }
 

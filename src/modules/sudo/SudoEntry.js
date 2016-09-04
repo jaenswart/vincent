@@ -11,10 +11,9 @@ import HostGroup from './../group/HostGroup';
 import Group from './../group/Group';
 import _ from 'lodash';
 
-class SudoEntry extends Base {
+class SudoEntry  {
 
     constructor(provider, data) {
-        super();
         this.data = {
             userList: {
                 users: [],
@@ -34,7 +33,7 @@ class SudoEntry extends Base {
                     } else if (member.group) {
                         let group = this.provider.managers.groupManager.findValidGroupByName(member.group.name);
                         if (group) {
-                            this.data.userList.groups.push(group.clone());
+                            this.data.userList.groups.push(group);
                         }
                     }
                 });
@@ -151,7 +150,7 @@ class SudoEntry extends Base {
         return obj;
     }
 
-    get entry() {
+    get line() {
         let entry = '';
         let num = this.data.userList.users.length;
         this.data.userList.users.forEach((user, index)=> {

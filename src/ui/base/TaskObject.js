@@ -3,12 +3,14 @@
  */
 
 import HostComponent from '../../modules/base/HostComponent';
+import PermissionHelper from './PermissionHelper';
 
 var data = new WeakMap();
 
-class TaskObject {
+class TaskObject extends PermissionHelper{
 
-    constructor(object){
+    constructor(session,object,permObj){
+        super(session,permObj);
         if(!object instanceof HostComponent){
             throw new Error("Parameter object must be an instance of HostComponent.");
         }
@@ -16,7 +18,7 @@ class TaskObject {
     }
 
     get becomeUser(){
-        return data.get(this).becomeUser;
+        return data.get(this).becomeUser? data.get(this).becomeUser:"root";
     }
 
     set becomeUser(becomeUser){
@@ -24,7 +26,7 @@ class TaskObject {
     }
 
     get become(){
-        return data.get(this).become;
+        return data.get(this).become? data.get(this).become:false;
     }
 
     set become(become){

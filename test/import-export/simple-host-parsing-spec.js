@@ -42,6 +42,7 @@ describe("validating host configuration", function () {
             group: "sysadmin",
             permissions: 770,
             configGroup: "default",
+            osFamily:"unknown",
             users: [
                 {
                     user: {name: "user1"},
@@ -60,7 +61,7 @@ describe("validating host configuration", function () {
                     group: {name: "group1"},
                     members: [
                         "user1"
-                    ]
+                    ],
                 },
                 {
                     group: {name: "group2"},
@@ -82,6 +83,7 @@ describe("validating host configuration", function () {
             group: "sysadmin",
             permissions: 770,
             configGroup: "default",
+            osFamily:"unknown",
             users: [
                 {
                     user: {name: "user1"}
@@ -99,6 +101,7 @@ describe("validating host configuration", function () {
             group: "sysadmin",
             permissions: 770,
             configGroup: "default",
+            osFamily:"unknown",
             users: [
                 {
                     user: {name: "user1"}
@@ -152,6 +155,7 @@ describe("validating host configuration", function () {
             group: "sysadmin",
             permissions: 770,
             configGroup: "default",
+            osFamily:"unknown",
             users: [
                 {
                     user: {name: "waldo"},
@@ -190,6 +194,7 @@ describe("validating host configuration", function () {
             group: "sysadmin",
             permissions: 770,
             configGroup: "default",
+            osFamily:"unknown",
             users: [
                 {
                     user: {name: "user1"},
@@ -247,6 +252,13 @@ describe("validating host configuration", function () {
     provider.managers.userManager.validUsers = validUsers;
     provider.managers.hostManager.loadHosts(hosts);
 
+    it("set become status correctly",()=>{
+        let h=provider.managers.hostManager.findValidHost("www.abc.co.za","default");
+        let g = provider.managers.groupManager.findHostGroup(h,"group2");
+        expect(g.become).to.be.true;
+        expect(g.becomeUser).to.equal("newton");
+    });
+
     it("should detect hosts without a name property", function () {
         expect(provider.managers.hostManager.errors.manager.indexOf("Error loading host - Could not create host  - The parameter data must be a hostname " +
             "or an object with a mandatory property \"name\".")).not.to.equal(-1);
@@ -265,7 +277,7 @@ describe("validating host configuration", function () {
     it("should detect hosts without a permissions property", function () {
         let host = provider.managers.hostManager.findValidHost("missing.permissions.com", "default");
         expect(host.permissions).to.equal(parseInt("660", 8));
-    });
+    });+
 
 
     it("should detect undefined users", function () {
@@ -328,6 +340,7 @@ describe("validating host configuration", function () {
                 group: "sysadmin",
                 permissions: 770,
                 configGroup: "default",
+                osFamily:"unknown",
                 users: [
                     {
                         user: {name: "user1", state: "present"}
@@ -356,12 +369,13 @@ describe("validating host configuration", function () {
                 ]
             },
             {
-                "name": "missing.permissions.com",
-                "owner": "einstein",
-                "group": "sysadmin",
-                "permissions": 660,
-                "configGroup": "default",
-                "users": [
+                name: "missing.permissions.com",
+                owner: "einstein",
+                group: "sysadmin",
+                permissions: 660,
+                configGroup: "default",
+                osFamily:"unknown",
+                users: [
                     {
                         "user": {
                             "name": "user1",
@@ -376,6 +390,7 @@ describe("validating host configuration", function () {
                 group: "sysadmin",
                 permissions: 770,
                 configGroup: "default",
+                osFamily:"unknown",
                 users: [
                     {
                         user: {name: "user2", state: "absent"}
@@ -402,6 +417,7 @@ describe("validating host configuration", function () {
                 group: "sysadmin",
                 permissions: 770,
                 configGroup: "default",
+                osFamily:"unknown",
                 users: [
                     {
                         user: {name: "user1", state: "present"},
@@ -429,7 +445,7 @@ describe("validating host configuration", function () {
         expect(provider.managers.hostManager.export()).to.deep.equal(validHosts);
     });
 
-    it("should generate a valid playbook", function (done) {
+    it("should generate and run a valid playbook", function (done) {
         let docker = new Docker();
         let running = false;
         var gen = provider.engine;
@@ -449,8 +465,8 @@ describe("validating host configuration", function () {
         }).then((result)=> {
             return gen.runPlaybook(host, false, null, 'vincent', 'pass');
         }).then(result=> {
-            //console.log(result);
-            expect(result.includes('ok=2    changed=1')).to.be.true;
+            expect(result.plays).isDefined;
+            //.includes('ok=2    changed=1')).to.be.true;
         }).then(result => {
             return docker.stopDocker();
         }).then(result=> {

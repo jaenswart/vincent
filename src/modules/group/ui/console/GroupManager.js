@@ -4,16 +4,18 @@
 import Vincent from '../../../../Vincent';
 import Group from "./Group";
 import PermissionsUIManager from '../../../../ui/PermissionsUIManager';
+import {logger} from '../../../../Logger';
 
 var data = new WeakMap();
 
 class GroupManager extends PermissionsUIManager{
     
     
-    constructor(appUser){
-        super(appUser, Vincent.app.provider.managers.groupManager);
+    constructor(session){
+        super(session, Vincent.app.provider.managers.groupManager);
         let obj = {};
-        obj.appUser = appUser;
+        obj.appUser = session.appUser;
+        obj.session = session;
         obj.permObj = Vincent.app.provider.managers.groupManager;
         data.set(this, obj);
     }
@@ -26,21 +28,23 @@ class GroupManager extends PermissionsUIManager{
                 }));
             });
         } catch (e) {
-            return e.message;
+            logger.error(e);
+            data.get(this).session.console.outputError(e.message);
         }
     }
 
     addGroup(group) {
         try {
-            return Vincent.app.provider._readAttributeCheck(data.get(this).appUser, data.get(this).permObj, ()=> {
+            return Vincent.app.provider._writeAttributeCheck(data.get(this).appUser, data.get(this).permObj, ()=> {
                 if (typeof group === 'string' ||( typeof group =="object" && !(group instanceof Group))) {
-                    return new Group(group,data.get(this).appUser,data.get(this).permObj);
+                    return new Group(group,data.get(this).session);
                 } else {
-                    return "Parameter must be a group name or group data object";
+                    data.get(this).session.console.outputError("Parameter must be a group name or group data object.");
                 }
             });
         } catch (e) {
-            return e.message;
+            logger.error(e);
+            data.get(this).session.console.outputError(e.message);
         }
     }
 
@@ -48,12 +52,11 @@ class GroupManager extends PermissionsUIManager{
         try {
             let group = data.get(this).permObj.findValidGroup(groupname);
             return Vincent.app.provider._readAttributeCheck(data.get(this).appUser, data.get(this).permObj, () => {
-                return new Group(group, data.get(this).appUser, data.get(this).permObj);
+                return new Group(group, data.get(this).session);
             });
         } catch (e) {
-            //console.log(e);
-            //return false;
-            return e.message;
+            logger.error(e);
+            data.get(this).session.console.outputError(e.message);
         }
     }
 
@@ -63,7 +66,8 @@ class GroupManager extends PermissionsUIManager{
                 return data.get(this).permObj.save();
             });
         } catch (e) {
-            return e.message;
+            logger.error(e);
+            data.get(this).session.console.outputError(e.message);
         }
     }
 
@@ -77,7 +81,8 @@ class GroupManager extends PermissionsUIManager{
                 }
             });
         }catch(e){
-            return e.message? e.message: e;
+            logger.error(e);
+            data.get(this).session.console.outputError(e.message);
         }
     }
 }

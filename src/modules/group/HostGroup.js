@@ -9,9 +9,8 @@ import {logger} from './../../Logger';
 class HostGroup extends HostComponent {
 
     constructor(provider, data) {
-        super(provider);
-        this.data = {members: []};
-        this.data.source = data;
+        super(provider,data);
+        this.data.members= [];
         this.errors = [];
         if (data) {
             if (typeof data === "object") {
@@ -24,7 +23,7 @@ class HostGroup extends HostComponent {
                 } else {
                     var group = this.provider.managers.groupManager.findValidGroupByName(data.group.name);
                     if (group) {
-                        this.data.group = group.clone();
+                        this.data.group = group;
                         if (data.group.state === "absent") {
                             this.data.group.state = "absent";
                         }
@@ -50,7 +49,6 @@ class HostGroup extends HostComponent {
                         }
                     });
                 }
-                super.load(data);
             } else {
                 logger.logAndThrow("The data parameter for HostGroup must be an data object or undefined.");
             }
@@ -160,18 +158,14 @@ class HostGroup extends HostComponent {
     export() {
         var obj = {};
         obj.group = this.data.group.exportId();
+        super.export(obj);
         if (this.data.members.length > 0) {
             obj.members = [];
             this.data.members.forEach((member)=> {
                 obj.members.push(member.name);
             });
         }
-        super.export(obj);
         return obj;
-    }
-
-    clone() {
-        return new HostGroup(this.provider, this.data);
     }
 
 }

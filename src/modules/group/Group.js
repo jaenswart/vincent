@@ -3,10 +3,9 @@
 import {logger} from './../../Logger';
 import Base from './../base/Base';
 
-class Group extends Base {
+class Group {
 
     constructor(data) {
-        super();
         //check if we were passed a group name or a data object
         if (typeof data === 'string') {
             var valid = /\w/;
@@ -38,7 +37,6 @@ class Group extends Base {
         if(data.gid){
             this.data.gid= data.gid;
         }
-        this._source = data;
     }
 
     get name() {
@@ -66,19 +64,16 @@ class Group extends Base {
     }
 
     equals(group) {
-        if (!group instanceof Group) {
+        if (!(group instanceof Group)) {
             return false;
         } else {
             return group.name === this.data.name && group.gid == this.gid;
         }
     }
 
-    clone() {
-        return new Group(this.data);
-    }
-
     export() {
-        return this.data;
+        let obj = this.data;
+        return obj;
     }
 
     exportId() {
